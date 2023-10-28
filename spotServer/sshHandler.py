@@ -19,7 +19,7 @@ class MySFTPClient(paramiko.SFTPClient):
         for line in stdout.readlines():
             print(line)
 
-def configureServer(host):
+def configureServer(host, keypair):
     ssh_client = paramiko.SSHClient()
     # remote server credentials
     # ip = "34.227.207.205"
@@ -28,7 +28,7 @@ def configureServer(host):
     print(host)
     username = "ubuntu"
     port = 22
-    key = paramiko.RSAKey.from_private_key_file("./platforms/keypairs/aws-newpair.pem")
+    key = paramiko.RSAKey.from_private_key_file("./platforms/keypairs/"+keypair)
     ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh_client.connect(hostname=host, port=port, username=username, pkey=key)
     transport = paramiko.Transport((host, port))

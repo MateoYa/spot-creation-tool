@@ -24,8 +24,29 @@ def delete(platform):
     else:
         return make_response('platform does not exist', 404)
 
+# @app.route('/<string:platform>/api_key/create', methods=['POST'])
+# def delete(platform):
+#     if platform in supported_platforms.keys:
+#         print(platform)
+#         return make_response('Hello world!')
+#     else:
+#         return make_response('platform does not exist', 404)
 
+# @app.route('/<string:platform>/api_key/delete', methods=['POST'])
+# def delete(platform):
+#     if platform in supported_platforms.keys:
+#         print(platform)
+#         return make_response('Hello world!')
+#     else:
+#         return make_response('platform does not exist', 404)
 
+# @app.route('/<string:platform>/api_key/list', methods=['POST'])
+# def delete(platform):
+#     if platform in supported_platforms.keys:
+#         print(platform)
+#         return make_response('Hello world!')
+#     else:
+#         return make_response('platform does not exist', 404)
 
 
 if __name__ == "__main__":
