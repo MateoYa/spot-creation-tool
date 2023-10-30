@@ -19,14 +19,13 @@ class MySFTPClient(paramiko.SFTPClient):
         for line in stdout.readlines():
             print(line)
 
-def configureServer(host, keypair):
+def configureServer(host, keypair, username="ubuntu"):
     ssh_client = paramiko.SSHClient()
     # remote server credentials
     # ip = "34.227.207.205"
     # ip = ip.replace(".", "-")
     # host = "ec2-"+ip+".compute-1.amazonaws.com"
     print(host)
-    username = "ubuntu"
     port = 22
     key = paramiko.RSAKey.from_private_key_file("./platforms/keypairs/"+keypair)
     ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -38,7 +37,7 @@ def configureServer(host, keypair):
 
     # you need full paths in order for this to work
     ftp.mkdir("/home/"+username+"/sftp_files")
-    ftp.put_dir("/home/mateo/Desktop/spotServer/platforms/stfp_files", "/home/"+username+"/sftp_files", ssh_client)
+    ftp.put_dir("/home/mateo/Desktop/spot-creation-tool/spotServer/platforms/stfp_files", "/home/"+username+"/sftp_files", ssh_client)
     # stdin, stdout, stderr = ssh_client.exec_command("chmod u+x hello.sh")
     # for line in stdout.readlines():
     #     print(line)

@@ -14,20 +14,17 @@ parent = os.path.dirname(current)
 sys.path.append(parent)
 import db
 import sshHandler
-
-datebase = db.DB()
-ec2 = boto3.resource('ec2')
 class AWS():
-    def __init__(self) -> None:
-        pass
-
-    def create(self, amount, keyID):
+    def __init__(self) -> None:    
+        self.database = db.DB()
+        self.ec2 = boto3.resource('ec2')
+    def create(self, amount, keyID, taskid):
         self.StartSpots(amount, ["us-east-1"] ,keyID)
     def CreationStandard(self, SpotAmount, KeyPair):
-        return ec2.create_instances(
+        return self.ec2.create_instances(
             ImageId='ami-053b0d53c279acc90',
-            MinCount=SpotAmount,
-            MaxCount=SpotAmount,
+            MinCount=1,
+            MaxCount=int(SpotAmount),
             InstanceType='t2.micro',
             KeyName=KeyPair
         )
@@ -83,7 +80,7 @@ class AWS():
         AvailabilityZone = self.BestPrice(Region)["AvailabilityZone"]
         Regional = AvailabilityZone[0:-1]
         ec2 = boto3.resource('ec2', region_name=Regional)
-        if (KeyPair not in [x["APIKeyPair"] for x in datebase.db.aws.find()]):
+        if (KeyPair not in [x["APIKeyPair"] for x in self.database.db.aws.find()]):
             RegionalKeyPair = ec2.create_key_pair(KeyName=KeyPair)
             data = {
                 "APIKeyPair": KeyPair,
@@ -94,28 +91,28 @@ class AWS():
                     }
                 }
             }
-            datebase.db.aws.insert_one(data)
-        elif Regional not in list(datebase.db.aws.find({"APIKeyPair": KeyPair})[0]["Regions"].keys()):
+            self.database.db.aws.insert_one(data)
+        elif Regional not in list(self.database.db.aws.find({"APIKeyPair": KeyPair})[0]["Regions"].keys()):
             RegionalKeyPair = ec2.create_key_pair(KeyName=KeyPair)
-            datebase.db.aws.update_many({"APIKeyPair": KeyPair},{"$set": {"Regions."+Regional: {"KeyPair": str(RegionalKeyPair.key_material), "instances": []}}})
+            self.database.db.aws.update_many({"APIKeyPair": KeyPair},{"$set": {"Regions."+Regional: {"KeyPair": str(RegionalKeyPair.key_material), "instances": []}}})
         instances = self.CreationStandard(SpotAmount, KeyPair)     
         for instance in instances:
-            datebase.db.aws.update_many({"APIKeyPair": KeyPair},{"$push": {"Regions."+Regional+".instances": instance.instance_id}})
+            self.database.db.aws.update_many({"APIKeyPair": KeyPair},{"$push": {"Regions."+Regional+".instances": instance.instance_id}})
     def ApiKeyInstancesRunning(self, KeyPair):
-        if (KeyPair in [x["APIKeyPair"] for x in datebase.db.aws.find()]):
-            for Region in list(datebase.db.aws.find({"APIKeyPair": KeyPair})[0]["Regions"].keys()):
+        if (KeyPair in [x["APIKeyPair"] for x in self.database.db.aws.find()]):
+            for Region in list(self.database.db.aws.find({"APIKeyPair": KeyPair})[0]["Regions"].keys()):
                 ec2_resource = boto3.resource('ec2', region_name=Region)
-                for instanceID in datebase.db.aws.find()[0]["Regions"][Region]["instances"]:
+                for instanceID in self.database.db.aws.find()[0]["Regions"][Region]["instances"]:
                     instance = ec2_resource.Instance(instanceID)
                     if instance.state['Name'] == 'terminated':
                         # Removes Instance From the list
-                        instances = datebase.db.aws.find_one({"APIKeyPair": KeyPair})["Regions"][Region]["instances"]
+                        instances = self.database.db.aws.find_one({"APIKeyPair": KeyPair})["Regions"][Region]["instances"]
                         instances.remove(instanceID)
-                        datebase.db.aws.update_one({"APIKeyPair": KeyPair}, {'$set': {"Regions."+Region+".instances": instances}})
+                        self.database.db.aws.update_one({"APIKeyPair": KeyPair}, {'$set': {"Regions."+Region+".instances": instances}})
                         # ReAdds Instance to the list
                         instances = self.CreationStandard(1, KeyPair)     
                         for instance in instances:
-                            datebase.db.aws.update_many({"APIKeyPair": KeyPair},{"$push": {"Regions."+Region+".instances": instance.instance_id}})
+                            self.database.db.aws.update_many({"APIKeyPair": KeyPair},{"$push": {"Regions."+Region+".instances": instance.instance_id}})
     def SpotSSH(self, Region, KeyPair, InstanceID):
         ec2_client = boto3.client("ec2", region_name=Region)
         waiter = ec2_client.get_waiter("instance_status_ok")
@@ -130,13 +127,21 @@ class AWS():
                     host = "ec2-"+ip+".compute-1.amazonaws.com"
                     name = "aws-"+KeyPair
                     outfile = open("./keypairs/"+name+'.pem','w')
-                    KeyPairOut = datebase.db.aws.find_one({"APIKeyPair": KeyPair})["Regions"][Region]["KeyPair"]
+                    KeyPairOut = self.database.db.aws.find_one({"APIKeyPair": KeyPair})["Regions"][Region]["KeyPair"]
                     outfile.write(KeyPairOut)
                     adrs = "./keypairs/"+name+".pem"
                     print(adrs)
                     subprocess.run(["chmod", "400", "./keypairs/"+name+".pem"])
                     print("hello")
                     sshHandler.configureServer(host, name+".pem")
+    def deleteVM(self, vmName, zone):
+        self.ec2.instances.filter(InstanceIds=[vmName]).terminate()
+        setpass = True
+        for i in self.database.db.aws.find():
+            if vmName in i["Regions"][zone]["instances"]:
+                if setpass:
+                    self.database.db.aws.update_many({"APIKeyPair": i["APIKeyPair"]},{"$pull": {"Regions."+zone+".instances": vmName}})
+                    setpass = False
 
             
 # StartSpots(1, ["us-east-1"], "newpair")
