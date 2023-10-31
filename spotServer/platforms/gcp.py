@@ -146,14 +146,17 @@ class GCP():
     def deleteVM(self, vmName, zone):
         setpass = True
         for i in self.database.db.gcp.find():
-            if vmName in i["Regions"][zone]["instances"]:
-                if setpass:
-                    self.database.db.gcp.update_many({"APIKeyPair": i["APIKeyPair"]},{"$pull": {"Regions."+zone+".instances": vmName}})
-                    setpass = False
+            try:
+                if vmName in i["Regions"][zone]["instances"]:
+                    if setpass:
+                        self.database.db.gcp.update_many({"APIKeyPair": i["APIKeyPair"]},{"$pull": {"Regions."+zone+".instances": vmName}})
+                        setpass = False
+            except Exception:
+                pass
         instance_client = compute_v1.InstancesClient()
         instance_client.delete(project=self.project_ID,zone=zone,instance=vmName)
     def deleteAPI(self, apikey):
-        for i in self.db.gcp.find_one({"APIKeyPair": apikey})["Regions"]:
+        for i in self.database.db.gcp.find_one({"APIKeyPair": apikey})["Regions"]:
             for ii in self.database.db.gcp.find_one({"APIKeyPair": apikey})["Regions"][i]["instances"]:
                 self.deleteVM(ii, i)
 

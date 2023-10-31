@@ -156,7 +156,7 @@ class AZURE():
             if vmName in disk.name:
                 client.disks.begin_delete(local_resource_group_name, disk.name).wait()
     def deleteAPI(self, apikey):
-        for i in self.db.azure.find_one({"APIKeyPair": apikey})["Regions"]:
+        for i in self.database.db.azure.find_one({"APIKeyPair": apikey})["Regions"]:
             for ii in self.database.db.azure.find_one({"APIKeyPair": apikey})["Regions"][i]["instances"]:
                 self.deleteVM(ii, i)
     def create_instance(self, VM_NAME, LOCATION, key):
