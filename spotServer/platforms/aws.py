@@ -142,6 +142,10 @@ class AWS():
                 if setpass:
                     self.database.db.aws.update_many({"APIKeyPair": i["APIKeyPair"]},{"$pull": {"Regions."+zone+".instances": vmName}})
                     setpass = False
+    def deleteAPI(self, apikey):
+        for i in self.db.aws.find_one({"APIKeyPair": apikey})["Regions"]:
+            for ii in self.database.db.aws.find_one({"APIKeyPair": apikey})["Regions"][i]["instances"]:
+                self.deleteVM(ii, i)
 
             
 # StartSpots(1, ["us-east-1"], "newpair")

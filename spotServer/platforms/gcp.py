@@ -4,7 +4,7 @@ import re
 import string
 import subprocess
 import sys
-from typing import Any
+from typing import Any, Dict, Iterable
 import warnings
 from google.protobuf.json_format import MessageToJson
 from google.api_core.extended_operation import ExtendedOperation
@@ -60,7 +60,35 @@ class GCP():
             self.database.db.gcp.insert_one(data)
 
         for i in range(int(amount)):
-            self.taskMessage(taskid, "starting new instance", i=i, ii=amount)
+            self.taskMessage("starting new instance", localtaskid=taskid, i=i, ii=amount)
+            if(self.list_all_instances(self.project_ID, self.ZONE) >= 7):
+                newLocationFinding = True
+                locations = ["us-west1-a", "us-west2-a", "us-west3-a","us-west4-a", "us-south1-a", "us-east1-a","us-east4-b", "us-east5-a", "us-central-a"]
+                while newLocationFinding:
+                    ii = random.randint(0, len(locations)-1)
+                    if(self.list_all_instances(self.project_ID, locations[ii]) <= 7):
+                        self.ZONE = locations[i] 
+                        newLocationFinding = False
+                key = rsa.generate_private_key(
+                backend=crypto_default_backend(),
+                public_exponent=65537,
+                key_size=2048
+                )
+                private_key = key.private_bytes(
+                    crypto_serialization.Encoding.PEM,
+                    crypto_serialization.PrivateFormat.TraditionalOpenSSL,
+                    crypto_serialization.NoEncryption()
+                )
+                public_key = key.public_key().public_bytes(
+                    crypto_serialization.Encoding.OpenSSH,
+                    crypto_serialization.PublicFormat.OpenSSH
+                )
+                data = {
+                        "PrivateKeyPair": str(private_key.decode()),
+                        "PublicKeyPair": str(public_key.decode()),
+                        "instances": []
+                }
+                self.database.db.gcp.update_many({"APIKeyPair": keyID},{"$set": {"Regions."+self.ZONE: data}})
             instanceNAME = "".join(random.choices(string.ascii_lowercase, k=10))
             instance = self.create_instance(project_id=self.project_ID, zone=self.ZONE, instance_name=instanceNAME, key=keyID, external_access=True)
             self.database.db.gcp.update_many({"APIKeyPair": keyID},{"$push": {"Regions."+self.ZONE+".instances": instance.name}})
@@ -73,16 +101,48 @@ class GCP():
             with open("./platforms/keypairs/gcp.pem",'wb') as pem_out:
                 pem_out.write(str(self.database.db.gcp.find_one({"APIKeyPair": keyID})["Regions"][self.ZONE]["PrivateKeyPair"]).encode())
             subprocess.run(["chmod", "400", "./platforms/keypairs/gcp.pem"])
+            self.taskMessage("waiting for ssh")
             time.sleep(25)
+            self.taskMessage("sshing into server")
             sshHandler.configureServer(host, "gcp.pem", "spotcontroller")
             os.remove("./platforms/keypairs/gcp.pem")
-    def taskMessage(self, localtaskid, message, i=0, ii=0):
+        self.taskMessage("finished", i=amount)
+        self.database.db.taskids.delete_one({"taskid": self.currentTASKID})
+
+    def taskMessage(self, message, localtaskid="", i=0, ii=0):
         if i != 0:
             self.currentamount = i
         if ii != 0:
             self.endamount = ii
-        self.database.db.taskids.update_many({"taskid": localtaskid}, {"$set": {"message": str(self.currentamount)+"/"+str(self.endamount)+" " + message}})
+        if localtaskid != "":
+            self.currentTASKID = localtaskid
 
+        self.database.db.taskids.update_many({"taskid": self.currentTASKID}, {"$set": {"message": str(self.currentamount)+"/"+str(self.endamount)+" " + message}})
+    def list_all_instances(
+        self,
+        project_id: str,
+        region: str
+    ) -> Dict[str, Iterable[compute_v1.Instance]]:
+
+        instance_client = compute_v1.InstancesClient()
+        request = {
+                "project" : project_id,
+                }
+
+        agg_list = instance_client.aggregated_list(request=request)
+
+        all_instances = {}
+        print("Instances found:")
+        i = 0
+        for zone, response in agg_list:
+            if response.instances:
+                if re.search(f"{region}*", zone):
+                    all_instances[zone] = response.instances
+                    print(f" {zone}:")
+                    for instance in response.instances:
+                        i += 1
+                        print(f" - {instance.name} ({instance.machine_type})")
+        return i
     def deleteVM(self, vmName, zone):
         setpass = True
         for i in self.database.db.gcp.find():
@@ -92,7 +152,10 @@ class GCP():
                     setpass = False
         instance_client = compute_v1.InstancesClient()
         instance_client.delete(project=self.project_ID,zone=zone,instance=vmName)
-
+    def deleteAPI(self, apikey):
+        for i in self.db.gcp.find_one({"APIKeyPair": apikey})["Regions"]:
+            for ii in self.database.db.gcp.find_one({"APIKeyPair": apikey})["Regions"][i]["instances"]:
+                self.deleteVM(ii, i)
 
     def disk_from_image(
         self,
@@ -313,14 +376,13 @@ class GCP():
 
         # Wait for the create operation to complete.
         print(f"Creating the {instance_name} instance in {zone}...")
-
+        self.taskMessage("starting vm")
         operation = instance_client.insert(request=request)
 
         self.wait_for_extended_operation(operation, "instance creation")
 
         print(f"Instance {instance_name} created.")
         return instance_client.get(project=project_id, zone=zone, instance=instance_name)
-
 # gcp = GCP()
 # # gcp.create(1, "blah", "uglybitch")
 # gcp.deleteVM("inyvtygirz")
