@@ -24,7 +24,7 @@ class AZURE():
         self.ZONE = "westus2"
         self.database = db.DB()
         self.credential = AzureCliCredential()
-        self.subscription_id = "6f15e407-5316-4a46-8972-d9a2d63cc29d"
+        self.subscription_id = "**********************"
         self.currentamount = 0
         self.endamount = 1
         self.currentTASKID = ""
