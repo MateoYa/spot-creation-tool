@@ -10,6 +10,7 @@ from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource import SubscriptionClient
+from azure.mgmt.compute.models import VirtualMachinePriorityTypes, VirtualMachineEvictionPolicyTypes, BillingProfile
 from cryptography.hazmat.primitives import serialization as crypto_serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend as crypto_default_backend
@@ -159,6 +160,27 @@ class AZURE():
         for i in self.database.db.azure.find_one({"APIKeyPair": apikey})["Regions"]:
             for ii in self.database.db.azure.find_one({"APIKeyPair": apikey})["Regions"][i]["instances"]:
                 self.deleteVM(ii, i)
+    def ApiKeyInstancesRunning(self, apikey):
+        compute_client = ComputeManagementClient(self.credential, self.subscription_id)
+        vm_list = compute_client.virtual_machines.list_all()
+        vm_names = []
+        for vm in vm_list:
+            vm_names.append(vm.name)
+        for i in self.database.db.azure.find_one({"APIKeyPair": apikey})["Regions"]:
+            for ii in self.database.db.azure.find_one({"APIKeyPair": apikey})["Regions"][i]["instances"]:
+                if ii not in vm_names:
+                    ip, vmNAME = self.create_instance(ii, i, apikey)
+                    try:
+                        os.remove("./platforms/keypairs/azure.pem")
+                    except Exception:
+                        pass
+                    with open("./platforms/keypairs/azure.pem",'wb') as pem_out:
+                        pem_out.write(str(self.database.db.azure.find_one({"APIKeyPair": apikey})["Regions"][i]["PrivateKeyPair"]).encode())
+                    subprocess.run(["chmod", "400", "./platforms/keypairs/azure.pem"])
+                    time.sleep(30)
+                    sshHandler.configureServer(ip, "azure.pem", "azureuser")
+                    os.remove("./platforms/keypairs/azure.pem")
+
     def create_instance(self, VM_NAME, LOCATION, key):
         self.taskMessage("starting to create "+VM_NAME)
         # Acquire a credential object using CLI-based authentication.
@@ -360,7 +382,10 @@ class AZURE():
                             }]
                     }        
                 }
-                }
+                },
+                'priority':VirtualMachinePriorityTypes.spot, # use Azure spot intance
+                'eviction_policy':VirtualMachineEvictionPolicyTypes.deallocate , #For Azure Spot virtual machines, the only supported value is 'Deallocate'
+                'billing_profile': BillingProfile(max_price=float(2)) 
             }
         )
 

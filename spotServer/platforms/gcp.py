@@ -61,12 +61,12 @@ class GCP():
 
         for i in range(int(amount)):
             self.taskMessage("starting new instance", localtaskid=taskid, i=i, ii=amount)
-            if(self.list_all_instances(self.project_ID, self.ZONE) >= 7):
+            if(len(self.list_all_instances(self.project_ID, self.ZONE)) >= 7):
                 newLocationFinding = True
                 locations = ["us-west1-a", "us-west2-a", "us-west3-a","us-west4-a", "us-south1-a", "us-east1-a","us-east4-b", "us-east5-a", "us-central-a"]
                 while newLocationFinding:
                     ii = random.randint(0, len(locations)-1)
-                    if(self.list_all_instances(self.project_ID, locations[ii]) <= 7):
+                    if(len(self.list_all_instances(self.project_ID, locations[ii])) <= 7):
                         self.ZONE = locations[i] 
                         newLocationFinding = False
                 key = rsa.generate_private_key(
@@ -90,7 +90,7 @@ class GCP():
                 }
                 self.database.db.gcp.update_many({"APIKeyPair": keyID},{"$set": {"Regions."+self.ZONE: data}})
             instanceNAME = "".join(random.choices(string.ascii_lowercase, k=10))
-            instance = self.create_instance(project_id=self.project_ID, zone=self.ZONE, instance_name=instanceNAME, key=keyID, external_access=True)
+            instance = self.create_instance(project_id=self.project_ID, zone=self.ZONE, instance_name=instanceNAME, key=keyID, spot=True, external_access=True)
             self.database.db.gcp.update_many({"APIKeyPair": keyID},{"$push": {"Regions."+self.ZONE+".instances": instance.name}})
             
             host = str(instance.network_interfaces[0].access_configs[0].nat_i_p)
@@ -133,14 +133,14 @@ class GCP():
 
         all_instances = {}
         print("Instances found:")
-        i = 0
+        i = []
         for zone, response in agg_list:
             if response.instances:
                 if re.search(f"{region}*", zone):
                     all_instances[zone] = response.instances
                     print(f" {zone}:")
                     for instance in response.instances:
-                        i += 1
+                        i.append(instance.name)
                         print(f" - {instance.name} ({instance.machine_type})")
         return i
     def deleteVM(self, vmName, zone):
@@ -155,6 +155,24 @@ class GCP():
                 pass
         instance_client = compute_v1.InstancesClient()
         instance_client.delete(project=self.project_ID,zone=zone,instance=vmName)
+    def ApiKeyInstancesRunning(self, apikey):
+        for i in self.database.db.gcp.find_one({"APIKeyPair": apikey})["Regions"]:
+            vm_names = self.list_all_instances(self.project_ID, i)
+            for ii in self.database.db.gcp.find_one({"APIKeyPair": apikey})["Regions"][i]["instances"]:
+                if ii not in vm_names:
+                    self.create_instance(ii, i, apikey)
+                    instance = self.create_instance(project_id=self.project_ID, zone=self.ZONE, instance_name=ii, key=apikey, spot=True,external_access=True)
+                    host = str(instance.network_interfaces[0].access_configs[0].nat_i_p)
+                    try:
+                        os.remove("./platforms/keypairs/gcp.pem")
+                    except Exception:
+                        pass
+                    with open("./platforms/keypairs/gcp.pem",'wb') as pem_out:
+                        pem_out.write(str(self.database.db.gcp.find_one({"APIKeyPair": apikey})["Regions"][i]["PrivateKeyPair"]).encode())
+                    subprocess.run(["chmod", "400", "./platforms/keypairs/gcp.pem"])
+                    time.sleep(25)
+                    sshHandler.configureServer(host, "gcp.pem", "spotcontroller")
+                    os.remove("./platforms/keypairs/gcp.pem")
     def deleteAPI(self, apikey):
         for i in self.database.db.gcp.find_one({"APIKeyPair": apikey})["Regions"]:
             for ii in self.database.db.gcp.find_one({"APIKeyPair": apikey})["Regions"][i]["instances"]:

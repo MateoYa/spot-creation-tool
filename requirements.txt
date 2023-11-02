@@ -1,0 +1,12 @@
+azure-mgmt-resource
+azure-mgmt-compute
+azure-mgmt-network
+azure-identity
+flask
+paramiko
+pymongo
+click
+boto3
+azure
+cryptography
+google.cloud

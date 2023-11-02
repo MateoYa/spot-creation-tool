@@ -26,7 +26,14 @@ class AWS():
             MinCount=1,
             MaxCount=int(SpotAmount),
             InstanceType='t2.micro',
-            KeyName=KeyPair
+            KeyName=KeyPair,
+            InstanceMarketOptions={
+            'MarketType': 'spot',
+            'SpotOptions': {
+                'MaxPrice': '1',
+                'SpotInstanceType': 'one-time',
+                'InstanceInterruptionBehavior': 'terminate'
+            }}
         )
     #   print(list(x["Regions"].keys()))
         # name = "aws-"+AvailabilityZone[0:-1]+"-"+ KeyPair

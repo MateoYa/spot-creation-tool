@@ -1,3 +1,4 @@
+import time
 from flask import Flask, jsonify, request, make_response
 from platforms.aws import AWS
 from platforms.gcp import GCP
@@ -125,7 +126,19 @@ def cleartasks():
     database.db.taskids.delete_many({})
     return make_response('all tasks cleared')
 
+def maintain():
+    while True:
+        for i in database.db.aws.find():
+            supported_platforms["aws"].ApiKeyInstancesRunning(i["APIKeyPair"])
+        for i in database.db.gcp.find():
+                    supported_platforms["aws"].ApiKeyInstancesRunning(i["APIKeyPair"])
+        for i in database.db.azure.find():
+            supported_platforms["aws"].ApiKeyInstancesRunning(i["APIKeyPair"])
+        print("hi")
+        time.sleep(300)
 
+target = threading.Thread(target=maintain)
+target.start()
 
 if __name__ == "__main__":
     # setting debug to True enables hot reload
