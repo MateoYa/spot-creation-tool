@@ -18,7 +18,12 @@ class AWS():
     def __init__(self) -> None:    
         self.database = db.DB()
         self.ec2 = boto3.resource('ec2')
+        self.currentTASKID = "background prosses"
+        self.currentamount = 0
+        self.endamount = 1
     def create(self, amount, keyID, taskid):
+        self.database.db.taskids.insert_one({"taskid": taskid, "message": "starting"})
+        self.taskMessage("starting new instance", localtaskid=taskid, i=0, ii=amount)
         self.StartSpots(amount, ["us-east-1"] ,keyID)
     def CreationStandard(self, SpotAmount, KeyPair):
         return self.ec2.create_instances(
@@ -102,9 +107,19 @@ class AWS():
         elif Regional not in list(self.database.db.aws.find({"APIKeyPair": KeyPair})[0]["Regions"].keys()):
             RegionalKeyPair = ec2.create_key_pair(KeyName=KeyPair)
             self.database.db.aws.update_many({"APIKeyPair": KeyPair},{"$set": {"Regions."+Regional: {"KeyPair": str(RegionalKeyPair.key_material), "instances": []}}})
+        self.taskMessage("creating all new instance", i=0)
+        ii = 0
         instances = self.CreationStandard(SpotAmount, KeyPair)     
         for instance in instances:
             self.database.db.aws.update_many({"APIKeyPair": KeyPair},{"$push": {"Regions."+Regional+".instances": instance.instance_id}})
+            self.taskMessage("waiting for instance to start running", i=ii)
+            instance.wait_until_running()
+            self.taskMessage("sshing into new instance")
+            self.SpotSSH(Regional, KeyPair, instance.instance_id)
+            ii += 1
+        self.taskMessage("FINISHED", i=ii)
+        time.sleep(180)
+        self.database.db.taskids.delete_one({"taskid": self.currentTASKID})
     def ApiKeyInstancesRunning(self, KeyPair):
         if (KeyPair in [x["APIKeyPair"] for x in self.database.db.aws.find()]):
             for Region in list(self.database.db.aws.find({"APIKeyPair": KeyPair})[0]["Regions"].keys()):
@@ -120,10 +135,10 @@ class AWS():
                         instances = self.CreationStandard(1, KeyPair)     
                         for instance in instances:
                             self.database.db.aws.update_many({"APIKeyPair": KeyPair},{"$push": {"Regions."+Region+".instances": instance.instance_id}})
+                            instance.wait_until_running()
+                            self.SpotSSH(Region, KeyPair, instance.instance_id)
     def SpotSSH(self, Region, KeyPair, InstanceID):
         ec2_client = boto3.client("ec2", region_name=Region)
-        waiter = ec2_client.get_waiter("instance_status_ok")
-        waiter.wait(InstanceIds=[InstanceID])
         print("instance running")
         reservations = ec2_client.describe_instances(InstanceIds=[InstanceID]).get("Reservations")
         for reservation in reservations:
@@ -133,14 +148,16 @@ class AWS():
                     ip = instance.get("PublicIpAddress").replace(".", "-")
                     host = "ec2-"+ip+".compute-1.amazonaws.com"
                     name = "aws-"+KeyPair
-                    outfile = open("./keypairs/"+name+'.pem','w')
-                    KeyPairOut = self.database.db.aws.find_one({"APIKeyPair": KeyPair})["Regions"][Region]["KeyPair"]
-                    outfile.write(KeyPairOut)
+                    with open("./platforms/keypairs/aws.pem",'wb') as pem_out:
+                        pem_out.write(str(self.database.db.aws.find_one({"APIKeyPair": KeyPair})["Regions"][Region]["KeyPair"]).encode())
                     adrs = "./keypairs/"+name+".pem"
-                    print(adrs)
-                    subprocess.run(["chmod", "400", "./keypairs/"+name+".pem"])
-                    print("hello")
-                    sshHandler.configureServer(host, name+".pem")
+                    subprocess.run(["chmod", "400", "./platforms/keypairs/aws.pem"])
+                    self.taskMessage("waiting for file transfer")
+                    time.sleep(25)
+                    sshHandler.configureServer(host, "aws.pem", "ubuntu")
+                    self.taskMessage("ssh complete")
+                    os.remove("./platforms/keypairs/aws.pem")
+
     def deleteVM(self, vmName, zone):
         self.ec2.instances.filter(InstanceIds=[vmName]).terminate()
         setpass = True
@@ -153,7 +170,15 @@ class AWS():
         for i in self.database.db.aws.find_one({"APIKeyPair": apikey})["Regions"]:
             for ii in self.database.db.aws.find_one({"APIKeyPair": apikey})["Regions"][i]["instances"]:
                 self.deleteVM(ii, i)
+    def taskMessage(self, message, localtaskid="", i=0, ii=0):
+        if i != 0:
+            self.currentamount = i
+        if ii != 0:
+            self.endamount = ii
+        if localtaskid != "":
+            self.currentTASKID = localtaskid
 
+        self.database.db.taskids.update_many({"taskid": self.currentTASKID}, {"$set": {"message": str(self.currentamount)+"/"+str(self.endamount)+" " + message}})
             
 # StartSpots(1, ["us-east-1"], "newpair")
 # SpotSSH("us-east-1", "newpair", "i-0ca3fa4c880d70e46")

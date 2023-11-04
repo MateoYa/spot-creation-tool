@@ -104,7 +104,11 @@ def status(taskid):
         instances["tasks"] = tasks
         return jsonify(instances)
     else:
-        return make_response(database.db.taskids.find({"taskid": taskid})[0]["message"])
+        try:
+            data = {"message": database.db.taskids.find({"taskid": taskid})[0]["message"]}
+        except Exception:
+            data = {"message": "wrong taskID or taskID has terminated or completed"}
+        return jsonify(data)
 
 # done
 @app.route('/api_key/list', methods=['GET'])
@@ -131,11 +135,11 @@ def maintain():
         for i in database.db.aws.find():
             supported_platforms["aws"].ApiKeyInstancesRunning(i["APIKeyPair"])
         for i in database.db.gcp.find():
-                    supported_platforms["aws"].ApiKeyInstancesRunning(i["APIKeyPair"])
+             supported_platforms["gcp"].ApiKeyInstancesRunning(i["APIKeyPair"])
         for i in database.db.azure.find():
-            supported_platforms["aws"].ApiKeyInstancesRunning(i["APIKeyPair"])
-        print("hi")
-        time.sleep(300)
+            supported_platforms["azure"].ApiKeyInstancesRunning(i["APIKeyPair"])
+        time.sleep(60)
+        print("check complete")
 
 target = threading.Thread(target=maintain)
 target.start()

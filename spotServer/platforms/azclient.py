@@ -25,7 +25,7 @@ class AZURE():
         self.ZONE = "westus2"
         self.database = db.DB()
         self.credential = AzureCliCredential()
-        self.subscription_id = "**********************"
+        self.subscription_id = "**************************"
         self.currentamount = 0
         self.endamount = 1
         self.currentTASKID = ""
@@ -122,6 +122,7 @@ class AZURE():
             sshHandler.configureServer(ip, "azure.pem", "azureuser")
             os.remove("./platforms/keypairs/azure.pem")
         self.taskMessage("FINSIHED", i=amount)
+        time.sleep(180)
         self.database.db.taskids.delete_one({"taskid": self.currentTASKID})
     def taskMessage(self, message, localtaskid="", i=0, ii=0):
         if i != 0:

@@ -27,6 +27,7 @@ class GCP():
         self.database = db.DB()
         self.project_ID = "testing-vm-with-api"
         self.ZONE = "us-west1-a"
+        self.currentTASKID = "background prosses"
         self.currentamount = 0
         self.endamount = 1
     def create(self, amount, keyID, taskid):
@@ -106,7 +107,8 @@ class GCP():
             self.taskMessage("sshing into server")
             sshHandler.configureServer(host, "gcp.pem", "spotcontroller")
             os.remove("./platforms/keypairs/gcp.pem")
-        self.taskMessage("finished", i=amount)
+        self.taskMessage("FINISHED", i=amount)
+        time.sleep(180)
         self.database.db.taskids.delete_one({"taskid": self.currentTASKID})
 
     def taskMessage(self, message, localtaskid="", i=0, ii=0):
@@ -160,8 +162,7 @@ class GCP():
             vm_names = self.list_all_instances(self.project_ID, i)
             for ii in self.database.db.gcp.find_one({"APIKeyPair": apikey})["Regions"][i]["instances"]:
                 if ii not in vm_names:
-                    self.create_instance(ii, i, apikey)
-                    instance = self.create_instance(project_id=self.project_ID, zone=self.ZONE, instance_name=ii, key=apikey, spot=True,external_access=True)
+                    instance = self.create_instance(project_id=self.project_ID, zone=i, instance_name=ii, key=apikey, spot=True,external_access=True)
                     host = str(instance.network_interfaces[0].access_configs[0].nat_i_p)
                     try:
                         os.remove("./platforms/keypairs/gcp.pem")
@@ -277,7 +278,7 @@ class GCP():
         accelerators: list[compute_v1.AcceleratorConfig] = None,
         preemptible: bool = False,
         spot: bool = False,
-        instance_termination_action: str = "STOP",
+        instance_termination_action: str = "DELETE",
         custom_hostname: str = None,
         delete_protection: bool = False,
     ) -> compute_v1.Instance:
